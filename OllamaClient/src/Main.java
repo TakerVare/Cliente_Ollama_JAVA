@@ -1,5 +1,6 @@
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -12,14 +13,28 @@ import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+// Importaciones para PDF
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
+
+// Importaciones para DOCX
+import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+
 public class Main {
     private static final String OLLAMA_API_URL = "http://localhost:11434/api/generate";
     private static final String OLLAMA_MODELS_URL = "http://localhost:11434/api/tags";
 
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
         System.out.println("Cliente Java para Ollama");
         System.out.println("========================");
+        System.out.println("Nota: Para utilizar las funciones de lectura de PDF y DOCX,");
+        System.out.println("necesitas añadir las siguientes dependencias a tu proyecto:");
+        System.out.println("- org.apache.pdfbox:pdfbox:2.0.27");
+        System.out.println("- org.apache.poi:poi-ooxml:5.2.3");
+        System.out.println("========================");
+
+        Scanner scanner = new Scanner(System.in);
 
         while (true) {
             try {
@@ -57,7 +72,8 @@ public class Main {
                     model = modelInput;
                 }
 
-                System.out.println("\nEscribe tu prompt o indica un archivo de texto usando 'file:/ruta/al/archivo.txt'");
+                System.out.println("\nEscribe tu prompt o indica un archivo usando 'file:/ruta/al/archivo'");
+                System.out.println("Formatos soportados: txt, pdf, docx");
                 System.out.print("Prompt: ");
                 String promptInput = scanner.nextLine();
 
@@ -75,6 +91,9 @@ public class Main {
                         System.out.println("Tamaño: " + prompt.length() + " caracteres");
                     } catch (IOException e) {
                         System.out.println("Error al leer el archivo: " + e.getMessage());
+                        continue;
+                    } catch (UnsupportedOperationException e) {
+                        System.out.println("Error: " + e.getMessage());
                         continue;
                     }
                 } else {
@@ -95,6 +114,35 @@ public class Main {
 
     private static String readFileContent(String filePath) throws IOException {
         File file = new File(filePath);
+
+        if (!file.exists()) {
+            throw new IOException("El archivo no existe: " + filePath);
+        }
+
+        String extension = getFileExtension(filePath);
+
+        switch (extension.toLowerCase()) {
+            case "txt":
+                return readTextFile(file);
+            case "pdf":
+                return readPdfFile(file);
+            case "docx":
+                return readDocxFile(file);
+            default:
+                throw new UnsupportedOperationException("Formato de archivo no soportado: " + extension +
+                        ". Los formatos soportados son: txt, pdf, docx");
+        }
+    }
+
+    private static String getFileExtension(String filePath) {
+        int lastDotIndex = filePath.lastIndexOf('.');
+        if (lastDotIndex == -1 || lastDotIndex == filePath.length() - 1) {
+            return "";
+        }
+        return filePath.substring(lastDotIndex + 1);
+    }
+
+    private static String readTextFile(File file) throws IOException {
         StringBuilder content = new StringBuilder();
 
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
@@ -105,6 +153,31 @@ public class Main {
         }
 
         return content.toString();
+    }
+
+    private static String readPdfFile(File file) throws IOException {
+        try (PDDocument document = PDDocument.load(file)) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            return stripper.getText(document);
+        } catch (NoClassDefFoundError e) {
+            throw new IOException("Error al leer PDF: Falta la dependencia de PDFBox. " +
+                    "Añade 'org.apache.pdfbox:pdfbox:2.0.27' a tu proyecto.");
+        }
+    }
+
+    private static String readDocxFile(File file) throws IOException {
+        try (FileInputStream fis = new FileInputStream(file);
+             XWPFDocument document = new XWPFDocument(fis)) {
+
+            XWPFWordExtractor extractor = new XWPFWordExtractor(document);
+            String text = extractor.getText();
+            extractor.close();
+            return text;
+
+        } catch (NoClassDefFoundError e) {
+            throw new IOException("Error al leer DOCX: Falta la dependencia de Apache POI. " +
+                    "Añade 'org.apache.poi:poi-ooxml:5.2.3' a tu proyecto.");
+        }
     }
 
     private static List<String> getAvailableModels() throws IOException {
