@@ -1,3 +1,5 @@
+package OllamaClient.src;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -13,7 +15,9 @@ import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+
 // Importaciones para PDF
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 
@@ -156,7 +160,8 @@ public class Main {
     }
 
     private static String readPdfFile(File file) throws IOException {
-        try (PDDocument document = PDDocument.load(file)) {
+        try (PDDocument document = Loader.loadPDF(file);) {
+        //try (PDDocument document = PDDocument.load(file)) {
             PDFTextStripper stripper = new PDFTextStripper();
             return stripper.getText(document);
         } catch (NoClassDefFoundError e) {
@@ -179,6 +184,7 @@ public class Main {
                     "Añade 'org.apache.poi:poi-ooxml:5.2.3' a tu proyecto.");
         }
     }
+
 
     private static List<String> getAvailableModels() throws IOException {
         List<String> models = new ArrayList<>();
