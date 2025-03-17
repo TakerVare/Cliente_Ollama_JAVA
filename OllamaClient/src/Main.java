@@ -15,7 +15,6 @@ import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
 // Importaciones para PDF
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -76,23 +75,27 @@ public class Main {
                     model = modelInput;
                 }
 
-                System.out.println("\nEscribe tu prompt o indica un archivo usando 'file:/ruta/al/archivo'");
-                System.out.println("Formatos soportados: txt, pdf, docx");
-                System.out.print("Prompt: ");
-                String promptInput = scanner.nextLine();
+                // Preguntar si desea cargar un archivo
+                System.out.println("\n¿Deseas cargar un archivo? (s/n): ");
+                String loadFileOption = scanner.nextLine().trim().toLowerCase();
 
-                if (promptInput.equalsIgnoreCase("salir")) {
-                    break;
-                }
+                String fileContent = "";
+                if (loadFileOption.equals("s") || loadFileOption.equals("si") || loadFileOption.equals("sí")) {
+                    System.out.println("Introduce la ruta del archivo:");
+                    System.out.println("Formatos soportados: txt, pdf, docx");
+                    String filePath = scanner.nextLine().trim();
 
-                String prompt;
-                // Verificar si es una ruta de archivo
-                if (promptInput.toLowerCase().startsWith("file:")) {
-                    String filePath = promptInput.substring(5).trim();
                     try {
-                        prompt = readFileContent(filePath);
+                        fileContent = readFileContent(filePath);
                         System.out.println("Archivo cargado: " + filePath);
-                        System.out.println("Tamaño: " + prompt.length() + " caracteres");
+                        System.out.println("Tamaño: " + fileContent.length() + " caracteres");
+
+                        // Mostrar el contenido del archivo
+                        System.out.println("\n¿Deseas ver el contenido del archivo? (s/n): ");
+                        String showContentOption = scanner.nextLine().trim().toLowerCase();
+                        if (showContentOption.equals("s") || showContentOption.equals("si") || showContentOption.equals("sí")) {
+                            displayCodeWithFormatting(fileContent);
+                        }
                     } catch (IOException e) {
                         System.out.println("Error al leer el archivo: " + e.getMessage());
                         continue;
@@ -100,11 +103,25 @@ public class Main {
                         System.out.println("Error: " + e.getMessage());
                         continue;
                     }
-                } else {
-                    prompt = promptInput;
                 }
 
-                sendPromptToOllama(model, prompt);
+                // Solicitar prompt de texto adicional
+                System.out.println("\nIntroduce tu prompt de texto:");
+                String textPrompt = scanner.nextLine();
+
+                if (textPrompt.equalsIgnoreCase("salir")) {
+                    break;
+                }
+
+                // Combinar el contenido del archivo con el prompt de texto (si se cargó un archivo)
+                String finalPrompt;
+                if (!fileContent.isEmpty()) {
+                    finalPrompt = "Archivo:\n\n" + fileContent + "\n\nPrompt:\n\n" + textPrompt;
+                } else {
+                    finalPrompt = textPrompt;
+                }
+
+                sendPromptToOllama(model, finalPrompt);
 
             } catch (IOException e) {
                 System.out.println("Error al conectar con Ollama: " + e.getMessage());
@@ -114,6 +131,12 @@ public class Main {
 
         scanner.close();
         System.out.println("¡Hasta luego!");
+    }
+
+    private static void displayCodeWithFormatting(String code) {
+        System.out.println("\n```");
+        System.out.println(code);
+        System.out.println("```\n");
     }
 
     private static String readFileContent(String filePath) throws IOException {
@@ -161,7 +184,6 @@ public class Main {
 
     private static String readPdfFile(File file) throws IOException {
         try (PDDocument document = Loader.loadPDF(file);) {
-        //try (PDDocument document = PDDocument.load(file)) {
             PDFTextStripper stripper = new PDFTextStripper();
             return stripper.getText(document);
         } catch (NoClassDefFoundError e) {
@@ -184,7 +206,6 @@ public class Main {
                     "Añade 'org.apache.poi:poi-ooxml:5.2.3' a tu proyecto.");
         }
     }
-
 
     private static List<String> getAvailableModels() throws IOException {
         List<String> models = new ArrayList<>();
