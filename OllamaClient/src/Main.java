@@ -90,7 +90,7 @@ public class Main {
         if (modoTrabajo.equalsIgnoreCase("2")){
             OllamaGUIClient gui = new OllamaGUIClient();
         }
-
+        //OllamaGUIClient()
 
     }
 
