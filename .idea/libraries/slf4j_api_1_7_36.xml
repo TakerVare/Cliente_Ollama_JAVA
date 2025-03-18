@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="slf4j.api_1.7.36">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/OllamaClient/resources/slf4j.api_1.7.36.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

@@ -18,5 +18,7 @@
     <orderEntry type="library" name="log4j-api-2.24.3" level="project" />
     <orderEntry type="library" name="pdfbox-3.0.4" level="project" />
     <orderEntry type="library" name="pdfbox-app-3.0.4" level="project" />
+    <orderEntry type="library" name="slf4j.api_1.7.36" level="project" />
+    <orderEntry type="library" name="json-20131018" level="project" />
   </component>
 </module>
