@@ -5,21 +5,26 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
-import javax.swing.text.*;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.Style;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledDocument;
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
 import java.util.List;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.regex.Matcher;
@@ -39,16 +44,18 @@ public class OllamaGUIClient extends JFrame {
 
     // Configuración por defecto
     private static final Map<String, Float> DEFAULT_PARAMETERS = new HashMap<String, Float>() {{
-        put("temperature", 0.7f);
+        put("temperature", 0.9f);
         put("top_p", 0.9f);
-        put("max_tokens", 2000f);
+        put("max_tokens", 1000000f);
     }};
 
     // Cache de modelos
     private static final Map<String, String> modelCache = new ConcurrentHashMap<>();
 
     // Logger para registro de errores y eventos
-    private static final Logger logger = LoggerFactory.getLogger(OllamaGUIClient.class);
+    //private static final Logger logger = Logger.getLogger(OllamaGUIClient.class.getName());
+    //private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(OllamaGUIClient.class.getName());
+    private static final Logger logger = LoggerFactory.getLogger(OllamaClient.class);
 
     // Historial de conversaciones
     private static final List<Map<String, String>> conversationHistory = new ArrayList<>();
@@ -105,11 +112,11 @@ public class OllamaGUIClient extends JFrame {
         modelComboBox.setToolTipText("Selecciona un modelo de Ollama");
 
         // Parámetros
-        temperatureField = new JTextField("0.7", 5);
+        temperatureField = new JTextField("0.9", 5);
         temperatureField.setToolTipText("Temperatura (0.0-1.0)");
         topPField = new JTextField("0.9", 5);
         topPField.setToolTipText("Top P (0.0-1.0)");
-        maxTokensField = new JTextField("2000", 5);
+        maxTokensField = new JTextField("10000", 5);
         maxTokensField.setToolTipText("Número máximo de tokens");
 
         // Carga de archivos
@@ -694,28 +701,14 @@ public class OllamaGUIClient extends JFrame {
         connection.setReadTimeout(30000);
         connection.setDoOutput(true);
 
-        // Crear JSON para el request - Escapar caracteres especiales para JSON
-        String escapedPrompt = prompt
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-
-        // Construir JSON con parámetros
-        StringBuilder jsonRequest = new StringBuilder();
-        jsonRequest.append("{");
-        jsonRequest.append("\"model\":\"").append(model).append("\",");
-        jsonRequest.append("\"prompt\":\"").append(escapedPrompt).append("\",");
-
-        // Añadir parámetros configurables
+        // Construir el JSON de forma segura usando JSONObject
+        JSONObject jsonRequest = new JSONObject();
+        jsonRequest.put("model", model);
+        jsonRequest.put("prompt", prompt);
         for (Map.Entry<String, Float> param : parameters.entrySet()) {
-            jsonRequest.append("\"").append(param.getKey()).append("\":");
-            jsonRequest.append(param.getValue()).append(",");
+            jsonRequest.put(param.getKey(), param.getValue());
         }
-
-        jsonRequest.append("\"stream\":true");
-        jsonRequest.append("}");
+        jsonRequest.put("stream", true);
 
         // Enviar petición
         try (OutputStream os = connection.getOutputStream()) {
@@ -729,26 +722,17 @@ public class OllamaGUIClient extends JFrame {
             while (responseScanner.hasNextLine()) {
                 String line = responseScanner.nextLine();
 
-                // Extraer el texto de la respuesta JSON
-                if (line.contains("\"response\":")) {
-                    try {
-                        int start = line.indexOf("\"response\":\"") + 12;
-                        int end = line.indexOf("\"", start);
-                        if (end > start) {
-                            String responsePart = line.substring(start, end);
-                            // Manejar caracteres escapados en la respuesta
-                            responsePart = responsePart
-                                    .replace("\\n", "\n")
-                                    .replace("\\r", "\r")
-                                    .replace("\\t", "\t")
-                                    .replace("\\\"", "\"")
-                                    .replace("\\\\", "\\");
-
-                            fullResponse.append(responsePart);
-                        }
-                    } catch (StringIndexOutOfBoundsException e) {
-                        logger.warn("Error al parsear respuesta", e);
+                // Utilizar JSONObject para procesar correctamente la respuesta JSON
+                try {
+                    JSONObject jsonResponse = new JSONObject(line);
+                    if (jsonResponse.has("response")) {
+                        // Esto automáticamente descodifica los caracteres escapados en JSON
+                        String responsePart = jsonResponse.getString("response");
+                        fullResponse.append(responsePart);
                     }
+                } catch (Exception e) {
+                    // Algunas líneas pueden no ser JSON válido, ignorarlas
+                    logger.warn("Error al parsear respuesta JSON: {}", line);
                 }
             }
         } finally {

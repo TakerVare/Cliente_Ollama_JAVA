@@ -3,7 +3,7 @@ package OllamaClient.src;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -51,20 +51,18 @@ public class Main {
         try (Scanner scanner = new Scanner(System.in)) {
             boolean running = true;
 
-            while (running) {
-                try {
-                    showMainMenu(scanner);
-                } catch (IOException e) {
-                    logger.error("Error de conexión con Ollama", e);
-                    System.out.println("Error al conectar con Ollama: " + e.getMessage());
-                    System.out.println("Asegúrate de que Ollama está ejecutándose en http://localhost:11434");
-                } catch (Exception e) {
-                    logger.error("Error inesperado", e);
-                    System.out.println("Error inesperado: " + e.getMessage());
-                }
 
-
+            try {
+                showMainMenu(scanner);
+            } catch (IOException e) {
+                logger.error("Error de conexión con Ollama", e);
+                System.out.println("Error al conectar con Ollama: " + e.getMessage());
+                System.out.println("Asegúrate de que Ollama está ejecutándose en http://localhost:11434");
+            } catch (Exception e) {
+                logger.error("Error inesperado", e);
+                System.out.println("Error inesperado: " + e.getMessage());
             }
+
         }
 
         logger.info("Finalizando Cliente Java para Ollama");
