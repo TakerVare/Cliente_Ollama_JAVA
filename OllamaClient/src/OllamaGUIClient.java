@@ -84,8 +84,15 @@ public class OllamaGUIClient extends JFrame {
     private JProgressBar progressBar;
     private JLabel statusLabel;
     private JCheckBox multimodalCheckbox;
+    private JCheckBox webSearchCheckbox;
+    private JTextField webSearchQueryField;
+    private JComboBox<WebSearchService.SearchAPI> searchAPIComboBox;
     private JPanel imagePreviewPanel;
     private JLabel imagePreviewLabel;
+    private JButton webSearchConfigButton;
+
+    // Servicio de búsqueda web
+    private WebSearchService webSearchService;
 
     // Estado de la aplicación
     private String fileContent = "";
@@ -105,6 +112,9 @@ public class OllamaGUIClient extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(900, 700);
         setMinimumSize(new Dimension(700, 500));
+
+        // Inicializar el servicio de búsqueda web
+        webSearchService = new WebSearchService();
 
         initComponents();
         layoutComponents();
@@ -137,6 +147,22 @@ public class OllamaGUIClient extends JFrame {
         // Multimodal checkbox
         multimodalCheckbox = new JCheckBox("Modo multimodal");
         multimodalCheckbox.setToolTipText("Habilitar para usar modelos que soporten imágenes como gemma3:27b");
+
+        // Búsqueda web
+        webSearchCheckbox = new JCheckBox("Búsqueda web");
+        webSearchCheckbox.setToolTipText("Habilitar para enriquecer las consultas con resultados de búsqueda web");
+
+        webSearchQueryField = new JTextField("", 15);
+        webSearchQueryField.setToolTipText("Consulta personalizada para búsqueda web (opcional)");
+        webSearchQueryField.setEnabled(false);
+
+        searchAPIComboBox = new JComboBox<>(WebSearchService.SearchAPI.values());
+        searchAPIComboBox.setToolTipText("Seleccionar API para realizar búsquedas web");
+        searchAPIComboBox.setEnabled(false);
+
+        webSearchConfigButton = new JButton("Configurar");
+        webSearchConfigButton.setToolTipText("Configurar las claves API para búsqueda web");
+        webSearchConfigButton.setEnabled(false);
 
         // Carga de archivos
         loadFileButton = new JButton("Cargar archivo");
@@ -208,17 +234,35 @@ public class OllamaGUIClient extends JFrame {
         JPanel modelPanel = new JPanel(new BorderLayout(5, 0));
         modelPanel.add(new JLabel("Modelo:"), BorderLayout.WEST);
         modelPanel.add(modelComboBox, BorderLayout.CENTER);
-        modelPanel.add(multimodalCheckbox, BorderLayout.EAST);
+
+        JPanel checkboxesPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        checkboxesPanel.add(multimodalCheckbox);
+        checkboxesPanel.add(webSearchCheckbox);
+        modelPanel.add(checkboxesPanel, BorderLayout.EAST);
+
         topPanel.add(modelPanel, BorderLayout.NORTH);
 
         // Parámetros
-        JPanel paramsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-        paramsPanel.add(new JLabel("Temperatura:"));
-        paramsPanel.add(temperatureField);
-        paramsPanel.add(new JLabel("Top P:"));
-        paramsPanel.add(topPField);
-        paramsPanel.add(new JLabel("Max tokens:"));
-        paramsPanel.add(maxTokensField);
+        JPanel paramsPanel = new JPanel(new GridLayout(2, 1, 0, 5));
+
+        // Primera fila: parámetros de modelo
+        JPanel modelParamsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        modelParamsPanel.add(new JLabel("Temperatura:"));
+        modelParamsPanel.add(temperatureField);
+        modelParamsPanel.add(new JLabel("Top P:"));
+        modelParamsPanel.add(topPField);
+        modelParamsPanel.add(new JLabel("Max tokens:"));
+        modelParamsPanel.add(maxTokensField);
+        paramsPanel.add(modelParamsPanel);
+
+        // Segunda fila: parámetros de búsqueda web
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        searchPanel.add(new JLabel("Búsqueda:"));
+        searchPanel.add(webSearchQueryField);
+        searchPanel.add(searchAPIComboBox);
+        searchPanel.add(webSearchConfigButton);
+        paramsPanel.add(searchPanel);
+
         topPanel.add(paramsPanel, BorderLayout.CENTER);
 
         // Panel de carga de archivos
@@ -310,6 +354,23 @@ public class OllamaGUIClient extends JFrame {
             loadImageButton.setEnabled(isMultimodal);
         });
 
+        // Checkbox de búsqueda web
+        webSearchCheckbox.addActionListener(e -> {
+            boolean isWebSearchEnabled = webSearchCheckbox.isSelected();
+            webSearchQueryField.setEnabled(isWebSearchEnabled);
+            searchAPIComboBox.setEnabled(isWebSearchEnabled);
+            webSearchConfigButton.setEnabled(isWebSearchEnabled);
+        });
+
+        // Selector de API de búsqueda
+        searchAPIComboBox.addActionListener(e -> {
+            WebSearchService.SearchAPI selectedAPI = (WebSearchService.SearchAPI) searchAPIComboBox.getSelectedItem();
+            webSearchService.setSearchAPI(selectedAPI);
+        });
+
+        // Botón de configuración de API
+        webSearchConfigButton.addActionListener(e -> configureSearchAPI());
+
         // Detectar Ctrl+Enter para enviar consulta
         promptTextArea.addKeyListener(new KeyAdapter() {
             @Override
@@ -320,6 +381,62 @@ public class OllamaGUIClient extends JFrame {
                 }
             }
         });
+    }
+
+    /**
+     * Abre un diálogo para configurar las claves API para búsqueda web
+     */
+    private void configureSearchAPI() {
+        JDialog configDialog = new JDialog(this, "Configurar API de búsqueda", true);
+        configDialog.setSize(400, 200);
+        configDialog.setLayout(new BorderLayout(10, 10));
+
+        JPanel panel = new JPanel(new GridLayout(3, 2, 10, 10));
+        panel.setBorder(new EmptyBorder(10, 10, 10, 10));
+
+        // Configuración de SerpAPI
+        panel.add(new JLabel("Clave SerpAPI:"));
+        JTextField serpApiField = new JTextField(20);
+        panel.add(serpApiField);
+
+        // Configuración de Google API
+        panel.add(new JLabel("Clave Google API:"));
+        JTextField googleApiField = new JTextField(20);
+        panel.add(googleApiField);
+
+        // Configuración de Google CSE ID
+        panel.add(new JLabel("Google CSE ID:"));
+        JTextField googleCseField = new JTextField(20);
+        panel.add(googleCseField);
+
+        configDialog.add(panel, BorderLayout.CENTER);
+
+        // Botones
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton saveButton = new JButton("Guardar");
+        JButton cancelButton = new JButton("Cancelar");
+
+        saveButton.addActionListener(e -> {
+            if (!serpApiField.getText().trim().isEmpty()) {
+                webSearchService.setApiKey("serpapi", serpApiField.getText().trim());
+            }
+            if (!googleApiField.getText().trim().isEmpty()) {
+                webSearchService.setApiKey("google", googleApiField.getText().trim());
+            }
+            if (!googleCseField.getText().trim().isEmpty()) {
+                webSearchService.setApiKey("google_cse", googleCseField.getText().trim());
+            }
+            configDialog.dispose();
+        });
+
+        cancelButton.addActionListener(e -> configDialog.dispose());
+
+        buttonPanel.add(saveButton);
+        buttonPanel.add(cancelButton);
+        configDialog.add(buttonPanel, BorderLayout.SOUTH);
+
+        configDialog.setLocationRelativeTo(this);
+        configDialog.setVisible(true);
     }
 
     /**
@@ -614,9 +731,14 @@ public class OllamaGUIClient extends JFrame {
         }
 
         String prompt = promptTextArea.getText().trim();
-        if (prompt.isEmpty()) {
+        if (prompt.isEmpty() && !webSearchCheckbox.isSelected()) {
             showError("Error", "El prompt no puede estar vacío");
             return;
+        }
+
+        // Si la búsqueda web está habilitada, permita un prompt vacío
+        if (prompt.isEmpty() && webSearchCheckbox.isSelected()) {
+            prompt = "Por favor analiza y responde basándote en esta información.";
         }
 
         String model = (String) modelComboBox.getSelectedItem();
@@ -641,11 +763,25 @@ public class OllamaGUIClient extends JFrame {
 
         // Determinar el tipo de consulta (texto o multimodal)
         final boolean isMultimodalQuery = multimodalCheckbox.isSelected() && loadedImage != null;
+        final boolean isWebSearchEnabled = webSearchCheckbox.isSelected();
+
+        // Verificar que la búsqueda web tenga una consulta
+        if (isWebSearchEnabled) {
+            String searchQuery = webSearchQueryField.getText().trim();
+            if (searchQuery.isEmpty()) {
+                showError("Error", "Debe especificar una consulta de búsqueda cuando la búsqueda web está habilitada");
+                return;
+            }
+        }
 
         // Configurar prompt final
-        final String finalTextPrompt = fileContent.isEmpty()
-                ? prompt
-                : "Archivo:\n\n" + fileContent + "\n\nPrompt:\n\n" + prompt;
+        final String basePrompt = fileContent.isEmpty() ? prompt : "Archivo:\n\n" + fileContent + "\n\nPrompt:\n\n" + prompt;
+
+        // Variable para el prompt final (se modificará si la búsqueda web está habilitada)
+        final String[] finalTextPrompt = {basePrompt};
+
+        // Capturar el valor final de prompt en una variable final para uso en el SwingWorker
+        final String finalPrompt = prompt;
 
         // Enviar consulta
         isRequestInProgress = true;
@@ -664,12 +800,47 @@ public class OllamaGUIClient extends JFrame {
                 // Limpiar el área de respuesta
                 publish("");
 
+                // Si la búsqueda web está habilitada, realizar búsqueda
+                if (isWebSearchEnabled && !isMultimodalQuery) {
+                    publish("Realizando búsqueda web...");
+
+                    // Determinar la consulta de búsqueda
+                    String searchQuery = webSearchQueryField.getText().trim();
+
+                    try {
+                        // Realizar búsqueda
+                        List<WebSearchService.SearchResult> searchResults = webSearchService.search(searchQuery);
+
+                        if (!searchResults.isEmpty()) {
+                            // Formatear resultados y añadirlos al prompt
+                            String formattedResults = webSearchService.formatSearchResultsForPrompt(searchResults);
+                            publish("Búsqueda completada. Realizando consulta con información adicional...");
+
+                            // Estructura mejorada para el prompt
+                            finalTextPrompt[0] = "A continuación hay información obtenida de una búsqueda web reciente sobre: \"" +
+                                    searchQuery + "\"\n\n" + formattedResults +
+                                    "\n\nInstrucciones: Utiliza ÚNICAMENTE la información anterior para responder lo siguiente. Si la información " +
+                                    "proporcionada no es suficiente, indícalo claramente. No uses conocimientos previos que no estén en los resultados de búsqueda.\n\n" +
+                                    "Consulta: " + (basePrompt.isEmpty() ? "Proporciona un resumen detallado de esta información." : basePrompt);
+                        } else {
+                            publish("No se encontraron resultados en la búsqueda. Realizando consulta normal...");
+                            finalTextPrompt[0] = "Realicé una búsqueda web sobre \"" + searchQuery + "\" pero no se encontraron resultados. " +
+                                    "Por favor responde a lo siguiente con tu mejor conocimiento: " + basePrompt;
+                        }
+                    } catch (Exception e) {
+                        logger.error("Error en búsqueda web", e);
+                        publish("Error en búsqueda web: " + e.getMessage() + ". Realizando consulta normal...");
+                        finalTextPrompt[0] = "Intenté realizar una búsqueda web sobre \"" + searchQuery + "\" pero ocurrió un error: " +
+                                e.getMessage() + ". Por favor responde a lo siguiente con tu mejor conocimiento: " + basePrompt;
+                    }
+                }
+
                 // Enviar el prompt a Ollama
                 if (isMultimodalQuery) {
-                    return sendMultimodalPromptToOllama(model, prompt, imageBase64, parameters);
+                    return sendMultimodalPromptToOllama(model, finalPrompt, imageBase64, parameters);
                 } else {
                     Map<String, Object> result = new HashMap<>();
-                    result.put("text", sendPromptToOllama(model, finalTextPrompt, parameters));
+                    result.put("text", sendPromptToOllama(model, finalTextPrompt[0], parameters));
                     return result;
                 }
             }
@@ -690,10 +861,23 @@ public class OllamaGUIClient extends JFrame {
                     // Procesar respuesta de texto
                     if (result.containsKey("text")) {
                         currentResponse = (String) result.get("text");
+
+                        // Verificar si la respuesta está vacía
+                        if (currentResponse == null || currentResponse.trim().isEmpty()) {
+                            currentResponse = "[El modelo no generó una respuesta textual. Esto puede ocurrir con algunos modelos de menor tamaño en modo multimodal.]";
+                            logger.warn("Se recibió una respuesta vacía del modelo {}", model);
+                        }
+
                         responseTextPane.setText(currentResponse);
 
                         // Aplicar coloreado de sintaxis
                         highlightCodeBlocks(responseTextPane, currentResponse);
+                    } else {
+                        // Si no hay texto en la respuesta, mostrar mensaje informativo
+                        String noTextMessage = "[No se recibió texto en la respuesta del modelo.]";
+                        responseTextPane.setText(noTextMessage);
+                        currentResponse = noTextMessage;
+                        logger.warn("La respuesta no contiene texto para el modelo {}", model);
                     }
 
                     // Procesar respuesta de imagen
@@ -705,9 +889,11 @@ public class OllamaGUIClient extends JFrame {
                     // Guardar en el historial
                     Map<String, String> historyItem = new HashMap<>();
                     historyItem.put("model", model);
-                    historyItem.put("prompt", isMultimodalQuery ? prompt + " [IMAGEN]" : finalTextPrompt);
+                    historyItem.put("prompt", isMultimodalQuery ? finalPrompt + " [IMAGEN]" :
+                            (isWebSearchEnabled ? finalPrompt + " [CON BÚSQUEDA WEB]" : finalTextPrompt[0]));
                     historyItem.put("response", currentResponse);
                     historyItem.put("hasImage", Boolean.toString(responseImage != null));
+                    historyItem.put("hasWebSearch", Boolean.toString(isWebSearchEnabled));
                     conversationHistory.add(historyItem);
 
                     setStatus("Respuesta recibida", false);
