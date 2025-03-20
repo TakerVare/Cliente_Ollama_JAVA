@@ -90,6 +90,9 @@ public class OllamaGUIClient extends JFrame {
     private JPanel imagePreviewPanel;
     private JLabel imagePreviewLabel;
     private JButton webSearchConfigButton;
+    private FileExplorerPanel fileExplorerPanel;
+    private JSplitPane mainSplitPane;
+    private List<FileExplorerPanel.FileInfo> selectedFiles = new ArrayList<>();
 
     // Servicio de búsqueda web
     private WebSearchService webSearchService;
@@ -110,8 +113,8 @@ public class OllamaGUIClient extends JFrame {
     public OllamaGUIClient() {
         super("Cliente GUI para Ollama");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(900, 700);
-        setMinimumSize(new Dimension(700, 500));
+        setSize(1100, 700);  // Tamaño aumentado para acomodar el panel lateral
+        setMinimumSize(new Dimension(900, 500));
 
         // Inicializar el servicio de búsqueda web
         webSearchService = new WebSearchService();
@@ -278,6 +281,13 @@ public class OllamaGUIClient extends JFrame {
 
         mainPanel.add(topPanel, BorderLayout.NORTH);
 
+        // NUEVOS CAMBIOS: Explorador de archivos y panel principal dividido
+
+        // Inicializar explorador de archivos
+        fileExplorerPanel = new FileExplorerPanel();
+        fileExplorerPanel.setPreferredSize(new Dimension(300, 500));
+        fileExplorerPanel.setOnFilesSelectedForAnalysis(this::handleSelectedFiles);
+
         // Panel central: área de prompt, vista previa de imagen y respuesta
         JPanel centerPanel = new JPanel(new BorderLayout(10, 10));
 
@@ -301,14 +311,22 @@ public class OllamaGUIClient extends JFrame {
         responsePanel.add(responseContentPanel, BorderLayout.CENTER);
 
         // Dividir la pantalla entre prompt y respuesta
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        splitPane.setResizeWeight(0.3);
-        splitPane.setOneTouchExpandable(true);
-        splitPane.setTopComponent(upperPanel);
-        splitPane.setBottomComponent(responsePanel);
+        JSplitPane contentSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        contentSplitPane.setResizeWeight(0.3);
+        contentSplitPane.setOneTouchExpandable(true);
+        contentSplitPane.setTopComponent(upperPanel);
+        contentSplitPane.setBottomComponent(responsePanel);
 
-        centerPanel.add(splitPane, BorderLayout.CENTER);
-        mainPanel.add(centerPanel, BorderLayout.CENTER);
+        centerPanel.add(contentSplitPane, BorderLayout.CENTER);
+
+        // Split pane principal: explorer + contenido
+        mainSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        mainSplitPane.setResizeWeight(0.2);
+        mainSplitPane.setOneTouchExpandable(true);
+        mainSplitPane.setLeftComponent(fileExplorerPanel);
+        mainSplitPane.setRightComponent(centerPanel);
+
+        mainPanel.add(mainSplitPane, BorderLayout.CENTER);
 
         // Panel inferior: botones y barra de progreso
         JPanel bottomPanel = new JPanel(new BorderLayout(10, 10));
@@ -437,6 +455,99 @@ public class OllamaGUIClient extends JFrame {
 
         configDialog.setLocationRelativeTo(this);
         configDialog.setVisible(true);
+    }
+
+    /**
+     * Método para manejar los archivos seleccionados desde el explorador
+     */
+    private void handleSelectedFiles(List<FileExplorerPanel.FileInfo> files) {
+        if (files.isEmpty()) {
+            return;
+        }
+
+        this.selectedFiles = files;
+
+        // Actualizar el área de prompt con información sobre los archivos seleccionados
+        StringBuilder filesInfo = new StringBuilder();
+        filesInfo.append("Archivos seleccionados para análisis:\n");
+
+        for (FileExplorerPanel.FileInfo file : files) {
+            filesInfo.append("- ").append(file.getName())
+                    .append(" (").append(file.getPath()).append(")\n");
+        }
+
+        promptTextArea.setText(filesInfo.toString() + "\n" + promptTextArea.getText());
+
+        // Si hay imágenes entre los archivos seleccionados, mostrar la primera en el panel de vista previa
+        files.stream()
+                .filter(FileExplorerPanel.FileInfo::isImage)
+                .findFirst()
+                .ifPresent(this::previewImageFile);
+
+        setStatus("Archivos seleccionados: " + files.size(), false);
+    }
+
+    /**
+     * Método para mostrar una vista previa de un archivo de imagen
+     */
+    private void previewImageFile(FileExplorerPanel.FileInfo imageFile) {
+        try {
+            File file = new File(imageFile.getPath());
+            loadedImage = ImageIO.read(file);
+            loadedFilePath = imageFile.getPath();
+
+            // Convertir a base64
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            String extension = imageFile.getExtension();
+            ImageIO.write(loadedImage, extension, baos);
+            imageBase64 = Base64.getEncoder().encodeToString(baos.toByteArray());
+
+            // Mostrar vista previa
+            displayImagePreview(loadedImage);
+
+            // Activar multimodal si hay una imagen
+            if (!multimodalCheckbox.isSelected()) {
+                multimodalCheckbox.setSelected(true);
+            }
+
+        } catch (Exception e) {
+            logger.error("Error al previsualizar imagen", e);
+            showError("Error de vista previa", "No se pudo cargar la vista previa de la imagen: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Prepara el contenido de múltiples archivos para enviar al modelo
+     */
+    private String prepareMultiFileContent() {
+        if (selectedFiles.isEmpty()) {
+            return fileContent; // Usar el contenido de archivo único si no hay selección múltiple
+        }
+
+        StringBuilder content = new StringBuilder();
+        content.append("# ARCHIVOS SELECCIONADOS\n\n");
+
+        for (FileExplorerPanel.FileInfo file : selectedFiles) {
+            if (!file.isImage()) {
+                try {
+                    file.loadContent();
+                    content.append("## ARCHIVO: ").append(file.getName())
+                            .append(" (").append(file.getPath()).append(")\n\n");
+                    content.append("```").append(file.getExtension()).append("\n");
+                    content.append(file.getContent()).append("\n");
+                    content.append("```\n\n");
+                } catch (IOException e) {
+                    logger.error("Error al cargar contenido del archivo: " + file.getPath(), e);
+                    content.append("## ERROR al cargar ").append(file.getName())
+                            .append(": ").append(e.getMessage()).append("\n\n");
+                }
+            } else {
+                content.append("## IMAGEN: ").append(file.getName())
+                        .append(" (no se muestra contenido binario)\n\n");
+            }
+        }
+
+        return content.toString();
     }
 
     /**
@@ -775,7 +886,10 @@ public class OllamaGUIClient extends JFrame {
         }
 
         // Configurar prompt final
-        final String basePrompt = fileContent.isEmpty() ? prompt : "Archivo:\n\n" + fileContent + "\n\nPrompt:\n\n" + prompt;
+        final String multiFileContent = prepareMultiFileContent();
+        final String basePrompt = (fileContent.isEmpty() && selectedFiles.isEmpty()) ?
+                prompt :
+                "Archivos:\n\n" + multiFileContent + "\n\nPrompt:\n\n" + prompt;
 
         // Variable para el prompt final (se modificará si la búsqueda web está habilitada)
         final String[] finalTextPrompt = {basePrompt};
@@ -911,22 +1025,6 @@ public class OllamaGUIClient extends JFrame {
         };
 
         worker.execute();
-    }
-
-    /**
-     * Extrae imágenes de respuesta en formato markdown
-     * Busca patrones como ![image](data:image/png;base64,...)
-     */
-    private void extractImagesFromMarkdown(String content, StringBuilder textResponse) {
-        // Buscar patrones de imágenes en markdown con data URI
-        Pattern pattern = Pattern.compile("!\\[.*?\\]\\((data:image\\/[^;]+;base64,[^\\)]+)\\)");
-        Matcher matcher = pattern.matcher(content);
-
-        while (matcher.find()) {
-            String dataUri = matcher.group(1);
-            imageDataResponse = dataUri;
-            logger.info("Imagen encontrada en respuesta markdown");
-        }
     }
 
     /**
@@ -1291,7 +1389,7 @@ public class OllamaGUIClient extends JFrame {
         JSONObject userMessage = new JSONObject();
         userMessage.put("role", "user");
 
-        // Formato de contenido para gemma3
+        // Formato de contenido para gemma
         // Primero el texto, luego la imagen separados con newlines y formato específico
         String multimodalContent = prompt + "\n\n![image](" + base64WithPrefix + ")";
         userMessage.put("content", multimodalContent);
@@ -1307,24 +1405,17 @@ public class OllamaGUIClient extends JFrame {
         }
         jsonRequest.put("stream", true);
 
-        // Enviar petición
-        try (OutputStream os = connection.getOutputStream()) {
-            byte[] input = jsonRequest.toString().getBytes(StandardCharsets.UTF_8);
-            os.write(input, 0, input.length);
-        }
-
-        // Procesar respuesta
-        StringBuilder textResponse = new StringBuilder();
-        String imageDataResponse = null;
-
         try {
-            // Primero registramos el JSON enviado para depuración
-            String jsonRequestString = jsonRequest.toString();
-            logger.info("Enviando solicitud JSON: {}", jsonRequestString);
+            // Primero registramos el JSON enviado para depuración (omitimos la imagen para no sobrecargar los logs)
+            JSONObject logJsonRequest = new JSONObject(jsonRequest.toString());
+            JSONArray logMessages = logJsonRequest.getJSONArray("messages");
+            JSONObject logUserMessage = logMessages.getJSONObject(0);
+            logUserMessage.put("content", prompt + "\n\n[IMAGEN BASE64 OMITIDA EN LOGS]");
+            logger.info("Enviando solicitud JSON: {}", logJsonRequest.toString());
 
             // Enviar petición
             try (OutputStream os = connection.getOutputStream()) {
-                byte[] input = jsonRequestString.getBytes(StandardCharsets.UTF_8);
+                byte[] input = jsonRequest.toString().getBytes(StandardCharsets.UTF_8);
                 os.write(input, 0, input.length);
             }
 
@@ -1344,6 +1435,9 @@ public class OllamaGUIClient extends JFrame {
             }
 
             // Procesar respuesta exitosa
+            StringBuilder textResponse = new StringBuilder();
+            String imageDataResponse = null;
+
             try (Scanner responseScanner = new Scanner(connection.getInputStream(), StandardCharsets.UTF_8.name())) {
                 while (responseScanner.hasNextLine()) {
                     String line = responseScanner.nextLine();
@@ -1362,6 +1456,13 @@ public class OllamaGUIClient extends JFrame {
 
                                 // Buscar imágenes en formato de datos URI
                                 extractImagesFromMarkdown(content, textResponse);
+
+                                // Registrar que recibimos contenido
+                                if (!content.trim().isEmpty()) {
+                                    logger.info("Contenido recibido del modelo: {} caracteres", content.length());
+                                }
+                            } else {
+                                logger.warn("El mensaje no tiene campo 'content'");
                             }
                         }
                         // Procesar delta en streaming
@@ -1376,47 +1477,75 @@ public class OllamaGUIClient extends JFrame {
 
                                         // Buscar imágenes en el contenido delta
                                         extractImagesFromMarkdown(content, textResponse);
-                                    }
-                                }
-                            }
-                        }
 
+                                        // Registrar que recibimos delta
+                                        if (!content.trim().isEmpty()) {
+                                            logger.debug("Delta recibido: {} caracteres", content.length());
+                                        }
+                                    } else {
+                                        logger.debug("Delta sin contenido o con contenido nulo");
+                                    }
+                                } else {
+                                    logger.debug("Delta no es un objeto JSON: {}", deltaObj);
+                                }
+                            } else {
+                                logger.debug("Delta nulo o no presente");
+                            }
+                        } else {
+                            logger.debug("Respuesta sin mensaje ni delta reconocibles: {}", line);
+                        }
                     } catch (Exception e) {
                         // Algunas líneas pueden no ser JSON válido
                         logger.warn("Error al parsear respuesta JSON: {}", e.getMessage());
                     }
                 }
             }
+
+            logger.info("Respuesta de texto recibida: {} caracteres", textResponse.length());
+            logger.info("¿Se recibió una imagen?: {}", imageDataResponse != null);
+
+            // Preparar resultado
+            Map<String, Object> result = new HashMap<>();
+            result.put("text", textResponse.toString());
+
+            // Procesar imagen si se recibió
+            if (imageDataResponse != null) {
+                try {
+                    // Primero eliminar el prefijo de data URI si existe
+                    String base64Data = imageDataResponse;
+                    if (base64Data.contains(";base64,")) {
+                        base64Data = base64Data.substring(base64Data.indexOf(";base64,") + 8);
+                    }
+
+                    byte[] imageBytes = Base64.getDecoder().decode(base64Data);
+                    ByteArrayInputStream bis = new ByteArrayInputStream(imageBytes);
+                    BufferedImage image = ImageIO.read(bis);
+                    result.put("image", image);
+                } catch (Exception e) {
+                    logger.error("Error al decodificar imagen de respuesta", e);
+                }
+            }
+
+            return result;
         } finally {
             connection.disconnect();
         }
+    }
 
-        logger.info("Respuesta de texto recibida: {} caracteres", textResponse.length());
-        logger.info("¿Se recibió una imagen?: {}", imageDataResponse != null);
+    /**
+     * Extrae imágenes de respuesta en formato markdown
+     * Busca patrones como ![image](data:image/png;base64,...)
+     */
+    private void extractImagesFromMarkdown(String content, StringBuilder textResponse) {
+        // Buscar patrones de imágenes en markdown con data URI
+        Pattern pattern = Pattern.compile("!\\[.*?\\]\\((data:image\\/[^;]+;base64,[^\\)]+)\\)");
+        Matcher matcher = pattern.matcher(content);
 
-        // Preparar resultado
-        Map<String, Object> result = new HashMap<>();
-        result.put("text", textResponse.toString());
-
-        // Procesar imagen si se recibió
-        if (imageDataResponse != null) {
-            try {
-                // Primero eliminar el prefijo de data URI si existe
-                String base64Data = imageDataResponse;
-                if (base64Data.contains(";base64,")) {
-                    base64Data = base64Data.substring(base64Data.indexOf(";base64,") + 8);
-                }
-
-                byte[] imageBytes = Base64.getDecoder().decode(base64Data);
-                ByteArrayInputStream bis = new ByteArrayInputStream(imageBytes);
-                BufferedImage image = ImageIO.read(bis);
-                result.put("image", image);
-            } catch (Exception e) {
-                logger.error("Error al decodificar imagen de respuesta", e);
-            }
+        while (matcher.find()) {
+            String dataUri = matcher.group(1);
+            imageDataResponse = dataUri;
+            logger.info("Imagen encontrada en respuesta markdown");
         }
-
-        return result;
     }
 
     /**
