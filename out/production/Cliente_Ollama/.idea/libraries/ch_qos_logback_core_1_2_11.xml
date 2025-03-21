@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="ch.qos.logback.core_1.2.11">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/OllamaClient/resources/ch.qos.logback.core_1.2.11.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

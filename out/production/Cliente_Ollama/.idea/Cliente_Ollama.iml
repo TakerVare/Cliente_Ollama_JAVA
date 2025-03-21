@@ -20,5 +20,8 @@
     <orderEntry type="library" name="pdfbox-app-3.0.4" level="project" />
     <orderEntry type="library" name="slf4j.api_1.7.36" level="project" />
     <orderEntry type="library" name="json-20131018" level="project" />
+    <orderEntry type="library" name="logback-classic-1.2.11" level="project" />
+    <orderEntry type="library" name="ch.qos.logback.core_1.2.11" level="project" />
+    <orderEntry type="library" name="json-20230618" level="project" />
   </component>
 </module>
